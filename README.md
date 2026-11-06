@@ -142,3 +142,7 @@ were deliberate:
 Rscript -e 'testthat::test_local("phylobuild")'    # R unit tests
 snakemake -n                                         # check the workflow builds
 ```
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).

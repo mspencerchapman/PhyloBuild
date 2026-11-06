@@ -8,7 +8,7 @@ Description: Filtering of somatic mutations called in clonal samples (e.g. singl
     to branches with treemut, and sensitivity correction of branch lengths. This is the
     R side of the PhyloBuild Snakemake pipeline; see Coorens, Spencer Chapman et al.,
     Nature Protocols 19, 1866-1886 (2024) for the method.
-License: GPL-3
+License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1)
 Imports:
