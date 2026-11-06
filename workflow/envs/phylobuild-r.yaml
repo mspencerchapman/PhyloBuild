@@ -1,0 +1,17 @@
+# R and MPBoot for running outside Sanger. After creating it, install treemut and phylobuild:
+#   Rscript -e 'remotes::install_github("nangalialab/treemut")'
+#   R CMD INSTALL phylobuild
+name: phylobuild-r
+channels: [conda-forge, bioconda]
+dependencies:
+  - r-base>=4.1
+  - r-ape
+  - r-phytools
+  - r-phangorn
+  - r-vgam
+  - r-seqinr
+  - r-stringr
+  - r-data.table
+  - r-remotes
+  - r-testthat
+  - mpboot

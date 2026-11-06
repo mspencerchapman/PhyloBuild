@@ -1,0 +1,125 @@
+# PhyloBuild: somatic phylogenies from clonal whole-genome sequencing.
+#
+#   snakemake --profile profiles/sanger-lsf            # run everything for every donor in the config
+#   snakemake --profile profiles/sanger-lsf -n         # dry run: show what would run
+#   snakemake --profile profiles/sanger-lsf results/PD12345/qc/sex_check.tsv   # run up to one output
+#   snakemake --profile profiles/sanger-lsf --configfile config/other.yaml      # use another config instead
+#
+# Steps for each donor (rules/ has one file per stage):
+#   staging.smk      (Sanger only, optional) stage BAMs out of iRODS
+#   calls.smk        PASS SNVs/indels per sample -> bed files of sites
+#   hairpin.smk      LCM hairpin artefact filter per sample
+#   cgpvaf.smk       read counts at every site in every sample (batched cgpVAF) -> merged matrices
+#   filtering.smk    sex check, filter parameters (with/without upfront colony filtering), hairpin reduction,
+#                    sensitivity
+#   tree.smk         tree building, one per upfront-colony-filter x filtering-type combination
+
+import copy
+import csv
+import os
+import re
+import sys
+
+# config/config.yaml unless another config is given with --configfile (which then replaces it rather than being
+# merged into it, so a second project's config doesn't pick up this one's donors)
+if "donors" not in config:
+    configfile: "config/config.yaml"
+
+
+# ---- Config helpers ----
+
+def deep_merge(base, override):
+    out = copy.deepcopy(base)
+    for k, v in (override or {}).items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+DONORS = {d: deep_merge(config["defaults"], settings) for d, settings in config["donors"].items()}
+
+def donor_cfg(donor):
+    return DONORS[donor]
+
+def cf_label(value):
+    """Label for an upfront colony filter value: 'none' or e.g. 'cf0.4'."""
+    return "none" if value in (None, "none", "None") else f"cf{value}"
+
+
+# ---- Sample sheet ----
+
+def read_samples(path):
+    with open(path) as fh:
+        rows = [r for r in csv.DictReader(fh, delimiter="\t") if r["donor"] and not r["donor"].startswith("#")]
+    required = {"donor", "sample", "caveman_vcf", "pindel_vcf"} | ({"project"} if config.get("bam_staging") == "sanger" else {"bam"})
+    missing = required - set(rows[0].keys()) if rows else required
+    if missing:
+        raise ValueError(f"Sample sheet {path} is missing column(s): {', '.join(sorted(missing))}")
+    samples = {}
+    for r in rows:
+        if r["donor"] not in DONORS or r["sample"] in DONORS[r["donor"]]["exclude_samples"]:
+            continue
+        samples.setdefault(r["donor"], {})[r["sample"]] = r
+    for d, cfg in DONORS.items():
+        in_sheet = {r["sample"] for r in rows if r["donor"] == d}
+        for s in set(cfg["exclude_samples"]) - in_sheet:
+            print(f"Note: {s} is in exclude_samples for {d} but not in the sample sheet", file=sys.stderr)
+    for d in DONORS:
+        if d not in samples:
+            raise ValueError(f"Donor {d} is in the config but has no samples in {path}")
+    return samples
+
+SAMPLES = read_samples(config["samples"])
+
+def samples_of(donor):
+    return sorted(SAMPLES[donor])
+
+def sample_row(donor, sample):
+    return SAMPLES[donor][sample]
+
+def mem_for_samples(donor, base_mb, per_sample_mb, attempt=1):
+    """Memory that grows with the number of colonies (e.g. ~300 colonies needed 64 GB for the tree step)."""
+    return int(max(base_mb, per_sample_mb * len(samples_of(donor))) * attempt)
+
+def cgpvaf_batches(donor):
+    """Samples split into cgpVAF batches, as {batch_number: [samples]}."""
+    size = int(donor_cfg(donor)["cgpvaf_batch_size"])
+    s = samples_of(donor)
+    return {i // size + 1: s[i:i + size] for i in range(0, len(s), size)}
+
+
+OUT = config["outdir"]
+CHROMOSOMES = config["reference"]["chromosomes"]
+SCRIPTS = os.path.join(workflow.basedir, "scripts")
+
+wildcard_constraints:
+    donor = "|".join(re.escape(d) for d in sorted(DONORS, key=len, reverse=True)),
+    vartype = "snv|indel",
+    cf = r"none|cf[0-9.]+",
+    filtering = "pval|vaf",
+    batch = r"\d+",
+    chrom = "|".join(re.escape(c) for c in CHROMOSOMES),
+
+def modules(kind):
+    return config.get("modules", {}).get(kind, [])
+
+
+# ---- Final targets ----
+
+def tree_targets():
+    targets = []
+    for d, cfg in DONORS.items():
+        targets.append(f"{OUT}/{d}/qc/sex_check.tsv")
+        for cf in cfg["upfront_colony_filter"]:
+            for filtering in cfg["tree_filtering"]:
+                targets.append(f"{OUT}/{d}/trees/{d}_{cf_label(cf)}/tree_files/tree_{d}_{cf_label(cf)}_{filtering}_post_mix_post_dup.tree")
+    return targets
+
+rule all:
+    input: tree_targets()
+
+
+include: "rules/staging.smk"
+include: "rules/calls.smk"
+include: "rules/hairpin.smk"
+include: "rules/cgpvaf.smk"
+include: "rules/filtering.smk"
+include: "rules/tree.smk"

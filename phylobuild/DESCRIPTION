@@ -1,0 +1,26 @@
+Package: phylobuild
+Type: Package
+Title: Somatic Phylogeny Reconstruction from Clonal Whole-Genome Sequencing
+Version: 0.1.0
+Authors@R: person("Michael", "Spencer Chapman", email = "ms56@sanger.ac.uk", role = c("aut", "cre"))
+Description: Filtering of somatic mutations called in clonal samples (e.g. single-cell
+    derived colonies), phylogeny reconstruction with MPBoot, assignment of mutations
+    to branches with treemut, and sensitivity correction of branch lengths. This is the
+    R side of the PhyloBuild Snakemake pipeline; see Coorens, Spencer Chapman et al.,
+    Nature Protocols 19, 1866-1886 (2024) for the method.
+License: GPL-3
+Encoding: UTF-8
+Depends: R (>= 4.1)
+Imports:
+    ape,
+    data.table,
+    phangorn,
+    phytools,
+    seqinr,
+    stringr,
+    treemut (>= 1.1),
+    VGAM
+Suggests:
+    testthat (>= 3.0.0)
+Remotes: nangalialab/treemut
+Config/testthat/edition: 3

@@ -1,0 +1,28 @@
+# Snakemake profile for the Sanger farm (LSF). Use with: snakemake --profile profiles/sanger-lsf
+# Jobs are submitted by lsf_submit.sh, with the memory request in the form the farm requires
+# (-M, select[mem>=X] and rusage[mem=X] must all agree). LSF logs go to logs/lsf/.
+executor: cluster-generic
+cluster-generic-submit-cmd: "profiles/sanger-lsf/lsf_submit.sh {resources.lsf_queue} {resources.lsf_group} {resources.mem_mb} {resources.runtime} {threads} {rule}"
+cluster-generic-status-cmd: profiles/sanger-lsf/lsf_status.sh
+cluster-generic-cancel-cmd: bkill
+jobs: 300                        # maximum jobs queued/running at once
+software-deployment-method: env-modules   # load the modules listed under `modules:` in config/config.yaml
+default-resources:
+  lsf_queue: normal
+  lsf_group: team273             # your LSF group (farm22 rejects jobs without a valid one)
+  mem_mb: 2000
+  runtime: 720                   # minutes
+resources:
+  irods_transfers: 10            # at most this many BAMs staged at once (stageBam.pl allows 10 parallel transfers)
+set-resources:
+  build_tree:
+    lsf_queue: long
+  filter_params:
+    lsf_queue: long
+retries: 1                       # rerun failed jobs once (rules that scale memory with `attempt` get more)
+rerun-incomplete: true
+keep-going: true                 # carry on with other donors/samples if one job fails
+printshellcmds: true
+latency-wait: 120                # lustre can be slow to show new files
+max-jobs-per-second: 5
+max-status-checks-per-second: 1

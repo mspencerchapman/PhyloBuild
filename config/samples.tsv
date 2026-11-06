@@ -1,0 +1,5 @@
+donor	sample	project	bam	caveman_vcf	pindel_vcf
+PD12345	PD12345a_lo0001	1234	/path/to/PD12345a_lo0001/PD12345a_lo0001.sample.dupmarked.bam	/path/to/PD12345a_lo0001/PD12345a_lo0001.caveman_c.annot.vcf.gz	/path/to/PD12345a_lo0001/PD12345a_lo0001.pindel.annot.vcf.gz
+PD12345	PD12345a_lo0002	1234	/path/to/PD12345a_lo0002/PD12345a_lo0002.sample.dupmarked.bam	/path/to/PD12345a_lo0002/PD12345a_lo0002.caveman_c.annot.vcf.gz	/path/to/PD12345a_lo0002/PD12345a_lo0002.pindel.annot.vcf.gz
+PD23456	PD23456a_lo0001	1234	/path/to/PD23456a_lo0001/PD23456a_lo0001.sample.dupmarked.bam	/path/to/PD23456a_lo0001/PD23456a_lo0001.caveman_c.annot.vcf.gz	/path/to/PD23456a_lo0001/PD23456a_lo0001.pindel.annot.vcf.gz
+PD23456	PD23456a_lo0002	1234	/path/to/PD23456a_lo0002/PD23456a_lo0002.sample.dupmarked.bam	/path/to/PD23456a_lo0002/PD23456a_lo0002.caveman_c.annot.vcf.gz	/path/to/PD23456a_lo0002/PD23456a_lo0002.pindel.annot.vcf.gz

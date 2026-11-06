@@ -1,0 +1,126 @@
+# PhyloBuild configuration.
+# One file per project. Settings under `defaults` apply to every donor; anything set under a donor overrides them.
+# Paths can be absolute, or relative to the directory you run snakemake from.
+
+project: my_project
+outdir: results
+samples: config/samples.tsv          # sample sheet: donor, sample, project, bam, caveman_vcf, pindel_vcf[, irods_db]
+
+# ---- BAMs ----
+# none:   use the bam column of the sample sheet as given
+# sanger: stage each BAM out of iRODS with stageBam.pl first (uses the project column; bam can be left blank)
+bam_staging: sanger
+staging_dir: results/staged_bams
+keep_staged_bams: true               # false: delete staged BAMs once cgpVAF and the hairpin filter are done
+
+# ---- Reference data ----
+genome_build: hg38                   # hg38 (chr-prefixed) or hg19
+reference:
+  genome: /nfs/casm/team273jn/resources/pileups_reference_data/hg38/genome.fa
+  high_depth_regions: /nfs/casm/team273jn/resources/pileups_reference_data/hg38/highdepth.bed.gz
+  snp_database: /nfs/casm/team273jn/resources/pileups_reference_data/hg38/SNP.vcf.gz   # for the hairpin filter
+  # In silico normal used by cgpVAF; .bai and .bas files must sit next to the BAM
+  normal_name: PDv38is_wgs
+  normal_project: 2480               # used when bam_staging is sanger
+  normal_irods_db: live              # live, or test if the normal is in a test project
+  normal_bam: /software/SGP/nst_links/live/2480/PDv38is_wgs/PDv38is_wgs.sample.dupmarked.bam   # used when bam_staging is none
+  chromosomes: [chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16,
+                chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY]
+
+# ---- Software ----
+tools:
+  cgpvaf: cgpVaf.pl
+  mpboot: mpboot
+  singularity: singularity
+  hairpin_sif: /nfs/casm/team273jn/resources/software/SangerLCMFilteringSingularity_latest.sif
+  singularity_bind: /nfs,/lustre,/software   # /software: the nst_links VCF paths
+  vagrent:
+    enabled: true
+    command: AnnotateVcf.pl
+    cache: /lustre/scratch124/casm/references/pipeline_ref/Human/GRCh38_full_analysis_set_plus_decoy_hla/vagrent/e103/vagrent.cache.gz
+    species: Human
+    assembly: GRCh38_full_analysis_set_plus_decoy_hla
+
+# Environment modules loaded for each kind of job (used with --use-envmodules; see the Sanger LSF profile).
+# Leave a list empty if the software is already on your PATH.
+modules:
+  staging: [dataImportExport]
+  cgpvaf: [cgpVAFcommand]
+  hairpin: [singularity]
+  r: [R/4.4.0]
+  tree: [R/4.4.0, mpboot, vagrent]
+
+# ---- Defaults for every donor ----
+defaults:
+  sex: unknown                       # male, female, or unknown (use the sex inferred from the data)
+  sex_check: strict                  # strict: stop if the configured sex disagrees with the data; warn: carry on
+  exclude_samples: []                # samples left out of every step (they're dropped from the sample sheet)
+  asmd_threshold: 120                # CaVEMan ASMD cut-off for PASS SNVs (and the hairpin filter); the bash workflow used 120
+  hairpin_fragment_threshold: 3      # the bash workflow used 3 (runlcmfilter.sh default is 4)
+  cgpvaf_batch_size: 10              # samples per cgpVAF job
+  # SNV sites genotyped by cgpVAF. hairpin: CaVEMan PASS sites that also passed the hairpin filter (fewer sites,
+  # same final result; cgpVAF waits for the hairpin jobs). caveman: all CaVEMan PASS sites, reduced afterwards.
+  cgpvaf_snv_sites: hairpin
+  cgpvaf_mapq: 30
+  sensitivity_min_total_depth: 500   # germline variants used for sensitivity need this total depth across colonies
+
+  # Colony filtering before the first tree: "none", and/or peak-VAF cut-offs. Each value gives its own set of trees.
+  upfront_colony_filter: [none, 0.4]
+  # Filtering strategy for the trees: pval and/or vaf. Each value gives its own tree.
+  tree_filtering: [pval, vaf]
+
+  age: null                          # age at sampling, for the ultrametric tree (null: scale to mean burden)
+  tree:
+    min_sample_mean_cov: 4           # drop samples below this mean depth
+    polytomous: true
+    keep_ancestral: true
+    snvs_only: true                  # build the tree topology from SNVs only
+    filter_y: false                  # ignore Y and X-PAR mutations for topology (e.g. recurrent loss of Y)
+    remove_nonclonal: true           # remove samples whose VAFs don't fit a clonal origin
+    germline_addback: true           # add back early mutations wrongly removed by the germline filter
+    bb_cutoff: 0.1
+    germline_log10_cutoff: -10
+    # Mean-depth window for keeping a site (removes poorly mapping / mismapping outliers).
+    # auto: median +/- depth_mad_k x MAD of the sites' mean depth, separately for male X/Y. Adapts to coverage and
+    # to the number of colonies. Or fixed values: {auto_low: 6, auto_high: 23, xy_low: 3, xy_high: 10}
+    depth_cutoffs: auto
+    depth_mad_k: 4
+    genes_to_annotate: resources/chip_drivers.txt
+    cn_table: null                   # csv of LOH/deletions: Sample, Chrom, Pos_min, Pos_max, Type
+    exclude_muts: []
+    keep_muts: []
+    group_pattern: null              # samples matching this (default: the donor key) are "donor"; others "recipient"
+    recipient_pattern: none          # e.g. the recipient's PD ID in a transplant study
+    mpboot_bootstraps: 1000
+    # Mutations whose read counts fit no branch well (treemut p < poor_fit_pval) are always shown in
+    # plots/<run>_poor_fit_mutations.pdf; remove_poor_fit also drops them before the tree is rebuilt.
+    poor_fit_pval: 0.001
+    remove_poor_fit: false
+    # Germline-filtered mutations absent from a small root clade are added back; with this on, they must also
+    # pass the depth window and overdispersion filter and look clonal in the other samples.
+    addback_require_filters: false
+    # Clonality test ignores CN-table regions (and X/Y in males), where a clonal sample's VAF isn't 0.5
+    clonality_exclude_cn_xy: false
+    # Duplicate samples: sister samples with fewer private mutations than max(min, prop x mean burden)
+    duplicate_min_private: 30
+    duplicate_prop: 0.03
+    seed: 1                          # makes MPBoot trees reproducible
+  legacy_rdata: false                # also write mats_and_params/filtered_muts in the old save() format
+
+# ---- Donors ----
+donors:
+  PD12345:
+    age: 30
+  PD23456:
+    age: 45
+    exclude_samples: [PD23456a_lo0010]
+
+  # A transplant pair: the donor key is an experiment ID, and the sample sheet holds both PD IDs
+  # (sanger_sample_sheet.py --donor TX_001 --pd-ids PD34567,PD45678 --projects 1234,1235)
+  # TX_001:
+  #   age: 42
+  #   asmd_threshold: 140
+  #   upfront_colony_filter: [none]
+  #   tree:
+  #     group_pattern: PD34567
+  #     recipient_pattern: PD45678

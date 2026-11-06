@@ -1,0 +1,13 @@
+# Export every function whose name doesn't start with a dot
+exportPattern("^[^\\.]")
+import(ape)
+importFrom(phangorn, Descendants)
+importFrom(phytools, nodeHeights, nodeheight)
+importFrom(treemut, reconstruct_genotype_summary)
+importFrom(VGAM, dbetabinom)
+importFrom(data.table, fread)
+importFrom(seqinr, write.fasta)
+importFrom(stats, binom.test, density, p.adjust, pbinom, median, runif)
+importFrom(graphics, image, layout, hist, plot.new, abline, arrows, par, plot, points, polygon, rect, segments, text, axis, legend, lines, strwidth, strheight)
+importFrom(grDevices, dev.off, pdf, rgb)
+importFrom(utils, read.delim, write.table, head, tail)

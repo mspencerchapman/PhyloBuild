@@ -1,0 +1,7 @@
+# Environment for running the pipeline itself: mamba env create -f workflow/envs/snakemake.yaml
+name: phylobuild
+channels: [conda-forge, bioconda]
+dependencies:
+  - python>=3.11
+  - snakemake>=9
+  - snakemake-executor-plugin-cluster-generic

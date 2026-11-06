@@ -1,0 +1,15 @@
+# Legacy scripts copied from the farm for reference (they have their own git history there)
+farm_scripts/
+# Pipeline outputs and Snakemake state
+results/
+logs/
+.snakemake/
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rcheck/
+
+# Project-specific configs and sample sheets (not shared)
+config/local/
+GUIDE.html
