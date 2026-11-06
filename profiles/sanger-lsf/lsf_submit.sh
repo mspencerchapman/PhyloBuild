@@ -6,9 +6,11 @@ queue=$1; group=$2; mem=$3; runtime=$4; threads=$5; rule=$6; jobscript=$7
 mem=${mem%.*}   # whole MB
 # Make the farm's `module` command available to every shell in the job (needed for the modules in the config)
 export BASH_ENV="$(cd "$(dirname "$0")" && pwd)/modules_init.sh"
-mkdir -p logs/lsf
+# LSF logs go to <study_dir>/logs/lsf (set by the Snakefile)
+logs=${PHYLOBUILD_LSF_LOGS:-logs/lsf}
+mkdir -p "$logs"
 out=$(bsub -q "$queue" -G "$group" -n "$threads" -W "$runtime" \
     -M "$mem" -R "select[mem>=${mem}] rusage[mem=${mem}] span[hosts=1]" \
-    -J "smk_${rule}" -o "logs/lsf/${rule}.%J.log" -e "logs/lsf/${rule}.%J.log" \
+    -J "smk_${rule}" -o "$logs/${rule}.%J.log" -e "$logs/${rule}.%J.log" \
     "$jobscript")
 echo "$out" | grep -oE 'Job <[0-9]+>' | grep -oE '[0-9]+'

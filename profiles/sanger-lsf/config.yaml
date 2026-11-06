@@ -1,6 +1,6 @@
 # Snakemake profile for the Sanger farm (LSF). Use with: snakemake --profile profiles/sanger-lsf
 # Jobs are submitted by lsf_submit.sh, with the memory request in the form the farm requires
-# (-M, select[mem>=X] and rusage[mem=X] must all agree). LSF logs go to logs/lsf/.
+# (-M, select[mem>=X] and rusage[mem=X] must all agree). LSF logs go to <study_dir>/logs/lsf/.
 executor: cluster-generic
 cluster-generic-submit-cmd: "profiles/sanger-lsf/lsf_submit.sh {resources.lsf_queue} {resources.lsf_group} {resources.mem_mb} {resources.runtime} {threads} {rule}"
 cluster-generic-status-cmd: profiles/sanger-lsf/lsf_status.sh

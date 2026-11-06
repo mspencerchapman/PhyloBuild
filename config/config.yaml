@@ -1,16 +1,19 @@
-# PhyloBuild configuration.
-# One file per project. Settings under `defaults` apply to every donor; anything set under a donor overrides them.
-# Paths can be absolute, or relative to the directory you run snakemake from.
+# PhyloBuild configuration (a template: copy it into your study directory, edit the copy, and run with
+# --configfile /path/to/study/config.yaml).
+# One file per study. Settings under `defaults` apply to every donor; anything set under a donor overrides them.
+# Paths can be absolute, or relative to the directory you run snakemake from (the PhyloBuild folder).
 
 project: my_project
-outdir: results
-samples: config/samples.tsv          # sample sheet: donor, sample, project, bam, caveman_vcf, pindel_vcf[, irods_db]
+# The study directory (must already exist). Each donor's results go to <study_dir>/<donor>/.
+study_dir: /path/to/study
+# Sample sheet: donor, sample, project, bam, caveman_vcf, pindel_vcf[, irods_db]. Default <study_dir>/samples.tsv
+# samples: /path/to/study/samples.tsv
 
 # ---- BAMs ----
 # none:   use the bam column of the sample sheet as given
 # sanger: stage each BAM out of iRODS with stageBam.pl first (uses the project column; bam can be left blank)
 bam_staging: sanger
-staging_dir: results/staged_bams
+# staging_dir: /path/to/study/staged_bams   # default <study_dir>/staged_bams
 keep_staged_bams: true               # false: delete staged BAMs once cgpVAF and the hairpin filter are done
 
 # ---- Reference data ----

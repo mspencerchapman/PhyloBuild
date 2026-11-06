@@ -1,7 +1,7 @@
 # Installing and running PhyloBuild
 
-This guide covers installing PhyloBuild, setting up a project (the sample sheet and the config file), and running
-it, mainly on the Sanger farm. For what the pipeline does and what it produces, see the [README](README.md).
+This guide covers installing PhyloBuild, setting up a study (the study directory, sample sheet and config file),
+and running it, mainly on the Sanger farm. For what the pipeline does and what it produces, see the [README](README.md).
 
 ## 1. Installing
 
@@ -17,7 +17,7 @@ Everything else (cgpVAF, the hairpin filter container, MPBoot, VAGrENT, R 4.4) i
 loaded as environment modules by the pipeline.
 
 ```bash
-# 1. Clone the repository somewhere on lustre (the results go inside it by default, and they're big)
+# 1. Clone the repository (results don't go in it, so anywhere you like; a lustre folder is fine)
 cd /lustre/scratch125/casm/teams/team273/users/$USER
 git clone https://github.com/mspencerchapman/PhyloBuild.git
 cd PhyloBuild
@@ -67,9 +67,22 @@ R CMD INSTALL --library=$R_LIBS phylobuild    # only needed if anything in phylo
 
 Snakemake notices when a step's code or settings have changed. A dry run (section 4) shows what would rerun.
 
-## 2. The sample sheet
+## 2. The study directory and sample sheet
 
-The sample sheet is a tab-separated file with one row per sample:
+Each study (a set of donors analysed together) has its own directory, which you make. It holds the study's config
+and sample sheet, and the pipeline puts each donor's results in a subdirectory of it:
+
+```
+my_study/
+  config.yaml          your copy of the config template (section 3)
+  samples.tsv          the sample sheet
+  PD12345/             results for each donor: calls, hairpin, cgpvaf, qc, mats_and_params, trees, logs
+  PD23456/
+  staged_bams/         BAMs staged from iRODS (deleted as they're finished with if keep_staged_bams: false)
+  logs/lsf/            LSF output of every job
+```
+
+The sample sheet is a tab-separated file with one row per sample (`config/samples_example.tsv` shows the format):
 
 | Column | What it is |
 |---|---|
@@ -80,11 +93,13 @@ The sample sheet is a tab-separated file with one row per sample:
 | `caveman_vcf`, `pindel_vcf` | the `caveman_c.annot.vcf.gz` and `pindel.annot.vcf.gz` files |
 | `irods_db` | optional: `live` (default) or `test`, the iRODS database the BAM is staged from |
 
-At Sanger, build it from nst_links rather than by hand:
+At Sanger, build it from nst_links rather than by hand (from the PhyloBuild folder):
 
 ```bash
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > config/samples.tsv
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> config/samples.tsv
+S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
+mkdir -p $S
+python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > $S/samples.tsv
+python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> $S/samples.tsv
 ```
 
 - `--projects 1234,1235` collects samples spread over several projects.
@@ -98,20 +113,29 @@ project, point it at the test folder (`--nst-links /software/SGP/nst_links/test`
 
 ## 3. The config file
 
-All settings for a project are in one YAML file, `config/config.yaml` by default. YAML is plain text: `key: value`
-pairs, indentation (spaces, not tabs) to nest settings, `#` for comments, and lists written as `[a, b]`. The file
-has five parts.
+All settings for a study are in one YAML file. `config/config.yaml` in the repository is a template: copy it into
+the study directory and edit the copy,
 
-### Project-wide settings (top of the file)
+```bash
+cp config/config.yaml $S/config.yaml
+```
+
+and give it to every run with `--configfile $S/config.yaml` (section 4). YAML is plain text: `key: value` pairs,
+indentation (spaces, not tabs) to nest settings, `#` for comments, and lists written as `[a, b]`. The file has five
+parts.
+
+### Study-wide settings (top of the file)
 
 ```yaml
-project: my_project
-outdir: results                      # everything goes to results/<donor>/
-samples: config/samples.tsv
+project: my_study
+study_dir: /lustre/scratch125/casm/teams/team273/users/me/my_study   # must exist; results go to <study_dir>/<donor>/
+# samples: ...                       # default <study_dir>/samples.tsv
 bam_staging: sanger                  # sanger: stage BAMs from iRODS; none: use the bam column as given
-staging_dir: results/staged_bams
+# staging_dir: ...                   # default <study_dir>/staged_bams
 keep_staged_bams: true               # false: delete each staged BAM once cgpVAF and hairpin have used it
 ```
+
+`study_dir` is the one setting you must change: the run stops if it isn't an existing directory.
 
 `keep_staged_bams: false` saves a lot of space (about 25 GB per colony): each BAM is deleted once the last job that
 reads it has finished. If you rerun from scratch later, the BAMs are staged again.
@@ -169,39 +193,35 @@ Every donor in the config must have samples in the sample sheet. To run only som
 `group_pattern` defaults to the donor key, and it's only used to colour the tree plots. If the key isn't the start
 of the sample names (an experiment ID, or a key like `PD23456_remapped`), set it to the PD ID.
 
-### Several projects
+### Several studies
 
-Use one config file per project (each with its own sample sheet, `outdir` and, if runs overlap in time,
-`staging_dir`), and choose it with `--configfile`:
-
-```bash
-snakemake --profile profiles/sanger-lsf --configfile config/config_PD23456_remapped.yaml
-```
-
-A config given this way replaces `config/config.yaml`; it isn't merged with it. So the file must be complete:
-copy `config/config.yaml` and edit the copy.
+Each study has its own directory and config, so one copy of PhyloBuild serves them all. The config given with
+`--configfile` replaces the template; it isn't merged with it, so each study's config is complete on its own.
 
 You can also change a single setting for one run from the command line, e.g.
-`--config keep_staged_bams=False` (put it at the end of the command, after any output names).
+`--config keep_staged_bams=False` (after any output names, like `--configfile`).
 
 ## 4. Running
 
-Always run from the top of the repository, because the profile refers to its scripts by relative path.
+Always run from the top of the PhyloBuild folder, because the profile refers to its scripts by relative path. The
+results still go to the study directory.
 
 ```bash
 cd PhyloBuild
 export R_LIBS=~/R/phylobuild-lib                    # if it isn't in ~/.bashrc
+S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
 
 # What would run? (a dry run: lists the jobs, runs nothing)
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf -n
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml -n
 
 # Run everything for every donor in the config
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml
 
-# Or just some outputs, e.g. one donor's sex check, or one tree
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf results/PD12345/qc/sex_check.tsv
+# Or just some outputs, e.g. one donor's sex check, or one tree. Output names go before --configfile (anything
+# after it is read as another config file)
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf $S/PD12345/qc/sex_check.tsv --configfile $S/config.yaml
 ~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf \
-    results/PD12345/trees/PD12345_none/tree_files/tree_PD12345_none_pval_post_mix_post_dup.tree
+    $S/PD12345/trees/PD12345_none/tree_files/tree_PD12345_none_pval_post_mix_post_dup.tree --configfile $S/config.yaml
 ```
 
 The Snakemake process itself (the "controller") does little work; it submits every step as its own LSF job. But it
@@ -209,32 +229,35 @@ must keep running until the end, which takes hours (about 3.5 hours for 48 colon
 a job on the basement queue:
 
 ```bash
-cat > run_project.sh <<'EOF'
+cd $S
+cat > run_phylobuild.sh <<'EOF'
 #!/bin/bash
 set -euo pipefail
+S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
 cd /lustre/scratch125/casm/teams/team273/users/$USER/PhyloBuild
 export R_LIBS=~/R/phylobuild-lib
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml
 EOF
-chmod +x run_project.sh
+chmod +x run_phylobuild.sh
 bsub -q basement -G team273 -M 4000 -R "select[mem>=4000] rusage[mem=4000]" \
-    -o run_project.log -e run_project.log -J phylobuild ./run_project.sh
+    -o run_phylobuild.log -e run_phylobuild.log -J phylobuild ./run_phylobuild.sh
 ```
 
-Then follow it with `tail -f run_project.log`, where it prints `N of M steps (x%) done`.
+Then follow it with `tail -f $S/run_phylobuild.log`, where it prints `N of M steps (x%) done`.
 
 **If something fails**:
 - **Finding the error:** Snakemake retries a failed step once, and keeps going with everything that doesn't depend
-  on it. At the end it lists the failed steps. Each step's log is under `results/<donor>/logs/`, and the LSF output
-  is under `logs/lsf/`.
+  on it. At the end it lists the failed steps. Each step's log is under `<study_dir>/<donor>/logs/`, and the LSF
+  output is under `<study_dir>/logs/lsf/`.
 - **Carrying on:** fix the problem and run the same command again. Only what's missing or out of date runs.
 - **Lock errors:** if the controller was killed, the next run may say the directory is locked. Run the command once
-  with `--unlock`, then again without it.
+  with `--unlock`, then again without it. (Snakemake keeps its own small bookkeeping folder, `.snakemake/`, in the
+  PhyloBuild folder; that's the only thing a run writes there.)
 - **Rerunning a step:** to rerun a step that worked, add `--forcerun <rule>` (e.g. `--forcerun build_tree`) or
   delete its outputs.
 
-Two runs can go at the same time from the same folder only if they write different files, e.g. the same config
-with different donors, or two configs with different `outdir`.
+Runs for different studies can go at the same time from the same PhyloBuild folder. Two runs of the same study can
+only if they write different files (e.g. different donors).
 
 ## 5. Example: a second analysis of a donor from a test project
 
@@ -243,22 +266,19 @@ Say PD23456 has been remapped to a modified reference and the new results are in
 
 1. **The BAMs are in the iRODS test database.** `stageBam.pl` only finds them with `-l test`. The BAMs in nst_links
    are links into iRODS that can't be read directly, so they must be staged.
-2. **It's a separate analysis of the same donor,** so it needs its own outputs.
+2. **It's a separate analysis of the same donor,** so it needs its own outputs: treat it as its own study.
 
-Set it up with its own sample sheet and config (`config/local/` is ignored by git, so it's a good place for
-project files):
-
-- **Sample sheet:**
+- **Study directory and sample sheet:**
   ```bash
-  mkdir -p config/local
+  R=/lustre/scratch125/casm/teams/team273/users/$USER/my_study_remapped
+  mkdir -p $R
   python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 9999 \
-      --nst-links /software/SGP/nst_links/test > config/local/samples_PD23456_remapped.tsv
+      --nst-links /software/SGP/nst_links/test > $R/samples.tsv
   ```
   Because the path is a test folder, `irods_db` is filled in as `test`, so the BAMs are staged from the test
   database.
-- **Config:** copy `config/config.yaml` to `config/local/config_PD23456_remapped.yaml` and set `samples` to the new
-  sheet, `outdir: results_remapped`, `staging_dir: results_remapped/staged_bams` (so it doesn't share staged files
-  with a standard run going at the same time), and only PD23456 under `donors`.
+- **Config:** copy `config/config.yaml` (or the standard study's config) to `$R/config.yaml`, and set
+  `study_dir` to `$R` and only PD23456 under `donors`.
 - **Reference genome:** set `reference.genome` to the FASTA the BAMs were mapped to. If the modified reference has
   the same contigs and coordinates (e.g. a region replaced with Ns), the other reference files can stay as they are.
 - **In silico normal:** if there's no normal mapped to the modified reference, keep the standard one. In the
@@ -268,12 +288,11 @@ project files):
 Run it with:
 
 ```bash
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile config/local/config_PD23456_remapped.yaml -n
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile config/local/config_PD23456_remapped.yaml
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $R/config.yaml -n
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $R/config.yaml
 ```
 
-The results go to `results_remapped/PD23456/`, next to the standard run in `results/PD23456/`, so the two are easy
-to compare.
+The results go to `my_study_remapped/PD23456/`, separate from the standard run in `my_study/PD23456/`.
 
 ## 6. Using the R package on its own
 
@@ -281,10 +300,11 @@ Every step's output is an `.rds` file that you can load in R:
 
 ```r
 library(phylobuild)
-x = read_mats_and_params("results/PD12345/mats_and_params/mats_and_params_PD12345_none.rds")
+d = "/path/to/my_study/PD12345"
+x = read_mats_and_params(file.path(d, "mats_and_params/mats_and_params_PD12345_none.rds"))
 names(x)                 # COMB_mats, filter_params
-tree = ape::read.tree("results/PD12345/trees/PD12345_none/tree_files/tree_PD12345_none_pval_post_mix_post_dup.tree")
-muts = readRDS("results/PD12345/trees/PD12345_none/annotated_muts/annotated_mut_set_PD12345_none_pval_post_mix_post_dup.rds")
+tree = ape::read.tree(file.path(d, "trees/PD12345_none/tree_files/tree_PD12345_none_pval_post_mix_post_dup.tree"))
+muts = readRDS(file.path(d, "trees/PD12345_none/annotated_muts/annotated_mut_set_PD12345_none_pval_post_mix_post_dup.rds"))
 ```
 
 `read_mats_and_params()` also reads the old `save()` files from the bash workflow. The tree-plotting functions you

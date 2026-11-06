@@ -3,7 +3,7 @@
 
 Example (one donor, samples spread over two projects, one extra sample, one left out):
     python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234,1235 \\
-        --include PD99999a_lo0001 --exclude PD12345a_lo0010 >> config/samples.tsv
+        --include PD99999a_lo0001 --exclude PD12345a_lo0010 > /path/to/study/samples.tsv
 
 Prints a header line too unless --no-header is given (use it when adding a second donor to an existing sheet).
 For a test project, point --nst-links at the test folder; the irods_db column is then set to test, so that

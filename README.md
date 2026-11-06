@@ -42,24 +42,31 @@ python3 -m venv ~/phylobuild-venv
 ~/phylobuild-venv/bin/pip install snakemake snakemake-executor-plugin-cluster-generic
 R CMD INSTALL phylobuild          # the R package (its dependencies are already on the farm's R 4.4)
 
-# 2. Make the sample sheet: one call per donor (add --no-header after the first)
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > config/samples.tsv
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> config/samples.tsv
+# 2. A study directory, with the sample sheet in it: one call per donor (add --no-header after the first)
+S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
+mkdir -p $S
+python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > $S/samples.tsv
+python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> $S/samples.tsv
 
-# 3. Edit config/config.yaml: donors, ages, sex, settings
+# 3. Copy the config template into it and edit the copy: study_dir, donors, ages, sex, settings
+cp config/config.yaml $S/config.yaml
 
-# 4. Check what will run, then run it (in a screen/tmux session, or as a long-queue job)
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf -n
-~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf
+# 4. Check what will run, then run it (from the PhyloBuild folder, as a basement-queue job; see GUIDE.md)
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml -n
+~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml
 ```
 
-Rerunning the same command picks up where it stopped. To run part of the pipeline, name an output, e.g.
-`snakemake --profile profiles/sanger-lsf results/PD12345/qc/sex_check.tsv`.
+Results go to `<study_dir>/<donor>/`, one folder per donor. Rerunning the same command picks up where it stopped.
+To run part of the pipeline, name an output before `--configfile`, e.g.
+`snakemake --profile profiles/sanger-lsf $S/PD12345/qc/sex_check.tsv --configfile $S/config.yaml`.
 
 ## Configuration
 
-Everything is in `config/config.yaml`; the comments there explain each setting. The main ones:
+Each study has its own config file, copied from the template `config/config.yaml`; the comments there explain
+each setting. The main ones:
 
+- **`study_dir`**: the study directory (it must exist). Each donor's results go to `<study_dir>/<donor>/`; the
+  sample sheet (`samples.tsv`), staged BAMs (`staged_bams/`) and LSF logs (`logs/lsf/`) default to it too.
 - **`donors`**: one entry per donor (or transplant pair); anything set here overrides `defaults`.
 - **`sex`**: `male`, `female`, or `unknown` to use the sex inferred from the data. The pipeline checks the
   configured sex against the data and stops if they disagree (`sex_check: warn` to carry on instead).
@@ -72,23 +79,23 @@ Everything is in `config/config.yaml`; the comments there explain each setting. 
   (use the sample sheet's `bam` column as given).
 - **`tree.depth_cutoffs`**: `auto` sets the mean-depth window from the data, as median ± `depth_mad_k` (default 4)
   × MAD of the sites' mean depth (separately for X/Y in males), so it follows the donor's coverage and number of
-  colonies. For a 47-colony test donor at ~15× this gives 6.8–23.5, close to the old fixed 6–23. The histogram with the cut-offs is in
-  `results/<donor>/qc/depth_cutoffs.pdf`.
+  colonies. For a 47-colony test donor at ~15× this gives 6.8–23.5, close to the old fixed 6–23. The histogram
+  with the cut-offs is in `<study_dir>/<donor>/qc/depth_cutoffs.pdf`.
 
-The **sample sheet** (`config/samples.tsv`) is tab-separated with columns `donor, sample, project, bam,
-caveman_vcf, pindel_vcf`, and optionally `irods_db` (`test` for BAMs in a test project, which `stageBam.pl`
-stages with `-l test`). Outside Sanger, fill it in yourself and set `bam_staging: none`. cgpVAF expects `.bai`
+The **sample sheet** (`<study_dir>/samples.tsv`; `config/samples_example.tsv` shows the format) is
+tab-separated with columns `donor, sample, project, bam, caveman_vcf, pindel_vcf`, and optionally `irods_db`
+(`test` for BAMs in a test project, which `stageBam.pl` stages with `-l test`). Outside Sanger, fill it in yourself and set `bam_staging: none`. cgpVAF expects `.bai`
 and `.bas` files next to each BAM.
 
-For a second project, copy the config and run with `--configfile config/<other>.yaml`, which replaces
-`config/config.yaml` (it isn't merged with it).
+A config given with `--configfile` replaces the template `config/config.yaml` (it isn't merged with it), so each
+study's config is complete on its own.
 
 Farm-specific settings (LSF group, queues) are in `profiles/sanger-lsf/config.yaml`; jobs are submitted by
 `profiles/sanger-lsf/lsf_submit.sh`.
 
 ## Outputs
 
-Under `results/<donor>/`:
+Under `<study_dir>/<donor>/`:
 
 | Path | Contents |
 |---|---|
