@@ -7,11 +7,15 @@ project: my_project
 # The study directory (must already exist). Each donor's results go to <study_dir>/<donor>/.
 study_dir: /path/to/study
 # Sample sheet: donor, sample, project, bam, caveman_vcf, pindel_vcf[, irods_db]. Default <study_dir>/samples.tsv
+# If it doesn't exist, it is built from nst_links using each donor's `projects` (Sanger only; see `donors` below).
+# A sheet you make yourself (by hand or with another script) is used as it is, and `projects` etc. are ignored.
 # samples: /path/to/study/samples.tsv
 
 # ---- BAMs ----
-# none:   use the bam column of the sample sheet as given
-# sanger: stage each BAM out of iRODS with stageBam.pl first (uses the project column; bam can be left blank)
+# none:   use the bam column of the sample sheet as given (at Sanger: read the BAMs straight from nst_links, which
+#         works for live projects and needs no disk space)
+# sanger: stage each BAM out of iRODS with stageBam.pl first (uses the project column; bam can be left blank). Needed
+#         for test projects. Each donor's BAMs must all fit on disk at once (~25 GB per colony).
 bam_staging: sanger
 # staging_dir: /path/to/study/staged_bams   # default <study_dir>/staged_bams
 keep_staged_bams: true               # false: delete staged BAMs once cgpVAF and the hairpin filter are done
@@ -57,7 +61,14 @@ modules:
 defaults:
   sex: unknown                       # male, female, or unknown (use the sex inferred from the data)
   sex_check: strict                  # strict: stop if the configured sex disagrees with the data; warn: carry on
-  exclude_samples: []                # samples left out of every step (they're dropped from the sample sheet)
+  # Building the sample sheet from nst_links (only when there is no sample sheet; usually set per donor):
+  projects: []                       # CanApps project numbers holding the donor's samples, e.g. [1234, 1235]
+  pd_ids: null                       # samples whose names start with these, e.g. [PD34567, PD45678] (null: the donor key)
+  include_samples: []                # extra samples whose names don't start with pd_ids
+  nst_links: /software/SGP/nst_links/live   # .../nst_links/test for a test project (BAMs then staged with -l test)
+  # Samples left out of every step (applied when the sheet is read, whether built or made by hand):
+  exclude_samples: []                # by name
+  exclude_pattern: null              # by regular expression on the name, e.g. "_lo[0-9]+$"
   asmd_threshold: 120                # CaVEMan ASMD cut-off for PASS SNVs (and the hairpin filter); the bash workflow used 120
   hairpin_fragment_threshold: 3      # the bash workflow used 3 (runlcmfilter.sh default is 4)
   cgpvaf_batch_size: 10              # samples per cgpVAF job
@@ -114,13 +125,16 @@ defaults:
 donors:
   PD12345:
     age: 30
+    projects: [1234]
   PD23456:
     age: 45
+    projects: [1234, 1235]
     exclude_samples: [PD23456a_lo0010]
 
   # A transplant pair: the donor key is an experiment ID, and the sample sheet holds both PD IDs
-  # (sanger_sample_sheet.py --donor TX_001 --pd-ids PD34567,PD45678 --projects 1234,1235)
   # TX_001:
+  #   projects: [1234, 1235]
+  #   pd_ids: [PD34567, PD45678]
   #   age: 42
   #   asmd_threshold: 140
   #   upfront_colony_filter: [none]

@@ -93,23 +93,63 @@ The sample sheet is a tab-separated file with one row per sample (`config/sample
 | `caveman_vcf`, `pindel_vcf` | the `caveman_c.annot.vcf.gz` and `pindel.annot.vcf.gz` files |
 | `irods_db` | optional: `live` (default) or `test`, the iRODS database the BAM is staged from |
 
-At Sanger, build it from nst_links rather than by hand (from the PhyloBuild folder):
+There are two ways to get one.
+
+### At Sanger: let the pipeline build it
+
+Give each donor in the config the CanApps projects its samples are in (section 3), and leave out `samples.tsv`:
+
+```yaml
+donors:
+  PD12345:
+    projects: [1234]
+  PD23456:
+    projects: [1234, 1235]
+    exclude_samples: [PD23456a_lo0010]
+```
+
+The first time you run the pipeline (a dry run is enough), it looks in each project's nst_links folder and writes
+`samples.tsv` into the study directory, with every sample whose name starts with the donor ID. It prints how many
+samples it found for each donor, and lists any whose VCFs aren't in nst_links yet (these are left out). Check the
+sheet before the real run. These donor settings choose the samples:
+
+| Setting | What it does |
+|---|---|
+| `projects` | CanApps project numbers to look in, e.g. `[1234, 1235]` |
+| `pd_ids` | take samples whose names start with these (default: the donor key), e.g. `[PD34567, PD45678]` for a transplant pair under an experiment ID |
+| `include_samples` | extra samples whose names don't start with `pd_ids`, e.g. samples that were labelled with another individual's PD ID |
+| `exclude_samples` | samples to leave out, by name |
+| `exclude_pattern` | leave out samples whose names match this regular expression, e.g. `"_lo[0-9]+$"` |
+| `nst_links` | default `/software/SGP/nst_links/live`; `/software/SGP/nst_links/test` for a test project (section 5) |
+
+`exclude_samples` and `exclude_pattern` are applied every time the sheet is read, so you can change them at any time.
+The sheet's first line records the `projects`, `pd_ids` and `include_samples` it was built from. If you change
+those, the pipeline stops and asks you to delete `samples.tsv`, and then builds it again on the next run. Delete it
+too to pick up samples that have arrived in nst_links since it was built.
+
+`bam_staging` (section 3) decides how the BAMs are reached: `none` reads them straight from nst_links (fine for
+live projects, and it uses no disk space), `sanger` stages them out of iRODS first (needed for test projects). The
+sheet has both the BAM path and the project, so it works either way.
+
+### Or make it yourself
+
+For anything the settings above can't express, or outside Sanger, make `samples.tsv` yourself: by hand, in R, or
+with your own script. **If a `samples.tsv` exists without the pipeline's first line, it is used exactly as it is,
+and the pipeline doesn't build one.** `projects`, `pd_ids` and `include_samples` are then ignored, but
+`exclude_samples` and `exclude_pattern` still apply. If you edit a sheet the pipeline built, delete its first line
+(the one starting `# Built by PhyloBuild`) so that your edits are kept.
+
+At Sanger, `workflow/scripts/sanger_sample_sheet.py` (which is what the pipeline uses) is a good starting point. Run
+it from the PhyloBuild folder:
 
 ```bash
 S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
-mkdir -p $S
 python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > $S/samples.tsv
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> $S/samples.tsv
+python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234,1235 --no-header >> $S/samples.tsv
 ```
 
-- `--projects 1234,1235` collects samples spread over several projects.
-- `--include` adds samples whose names don't start with the donor ID.
-- `--exclude` leaves samples out.
-- For a transplant pair, `--donor TX_001 --pd-ids PD34567,PD45678` puts both individuals' samples under one key.
-
-Samples whose VCFs aren't in nst_links yet are listed and left out, so rerun it once they're ready. For a test
-project, point it at the test folder (`--nst-links /software/SGP/nst_links/test`); it then fills in `irods_db` as
-`test` (section 5 has an example).
+It takes `--pd-ids`, `--include`, `--exclude`, `--exclude-pattern` and `--nst-links`, which work like the settings of
+the same names above.
 
 ## 3. The config file
 
@@ -129,7 +169,7 @@ parts.
 ```yaml
 project: my_study
 study_dir: /lustre/scratch125/casm/teams/team273/users/me/my_study   # must exist; results go to <study_dir>/<donor>/
-# samples: ...                       # default <study_dir>/samples.tsv
+# samples: ...                       # default <study_dir>/samples.tsv (built from `projects` if missing; section 2)
 bam_staging: sanger                  # sanger: stage BAMs from iRODS; none: use the bam column as given
 # staging_dir: ...                   # default <study_dir>/staged_bams
 keep_staged_bams: true               # false: delete each staged BAM once cgpVAF and hairpin have used it
@@ -138,7 +178,9 @@ keep_staged_bams: true               # false: delete each staged BAM once cgpVAF
 `study_dir` is the one setting you must change: the run stops if it isn't an existing directory.
 
 `keep_staged_bams: false` saves a lot of space (about 25 GB per colony): each BAM is deleted once the last job that
-reads it has finished. If you rerun from scratch later, the BAMs are staged again.
+reads it has finished. If you rerun from scratch later, the BAMs are staged again. Even so, all of a donor's BAMs
+are on disk at once while cgpVAF runs, so a donor with hundreds of colonies can need more space than the team has.
+For live projects, `bam_staging: none` avoids this by reading the BAMs straight from nst_links.
 
 ### `reference`, `tools` and `modules`
 
@@ -154,7 +196,8 @@ change:
 | Setting | What it does |
 |---|---|
 | `sex` | `male`, `female` or `unknown`. With `unknown`, the sex inferred from the data is used. Otherwise it's checked against the data, and the run stops if they disagree (`sex_check: warn` carries on instead). |
-| `exclude_samples` | samples to leave out of every step |
+| `projects`, `pd_ids`, `include_samples`, `nst_links` | where to find the donor's samples when the pipeline builds the sample sheet (section 2); usually set per donor |
+| `exclude_samples`, `exclude_pattern` | samples to leave out of every step, by name or by regular expression |
 | `asmd_threshold` | CaVEMan ASMD cut-off for PASS SNVs (the bash workflow used 120) |
 | `upfront_colony_filter` | `[none, 0.4]`: build trees from all colonies, and also after removing colonies with peak VAF below 0.4 (the old `_m40` runs). `[none]` for just the first. |
 | `tree_filtering` | `[pval, vaf]`: one tree per filtering strategy |
@@ -174,12 +217,16 @@ you only write the ones that differ:
 donors:
   PD12345:
     age: 20
+    projects: [1234]
   PD23456:
     age: 20
+    projects: [1234]
     exclude_samples: [PD23456a_lo0010]
     tree:
       filter_y: true            # only this tree option changes; the others keep their defaults
   TX_001:                     # a transplant pair under an experiment ID
+    projects: [1234, 1235]
+    pd_ids: [PD34567, PD45678]
     age: 42
     upfront_colony_filter: [none]
     tree:
@@ -268,17 +315,17 @@ Say PD23456 has been remapped to a modified reference and the new results are in
    are links into iRODS that can't be read directly, so they must be staged.
 2. **It's a separate analysis of the same donor,** so it needs its own outputs: treat it as its own study.
 
-- **Study directory and sample sheet:**
-  ```bash
-  R=/lustre/scratch125/casm/teams/team273/users/$USER/my_study_remapped
-  mkdir -p $R
-  python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 9999 \
-      --nst-links /software/SGP/nst_links/test > $R/samples.tsv
+- **Study directory:** `R=/lustre/scratch125/casm/teams/team273/users/$USER/my_study_remapped; mkdir -p $R`
+- **Config:** copy `config/config.yaml` (or the standard study's config) to `$R/config.yaml`, set `study_dir` to
+  `$R` and `bam_staging: sanger`, and give only PD23456 under `donors`, with the test project:
+  ```yaml
+  donors:
+    PD23456:
+      projects: [9999]
+      nst_links: /software/SGP/nst_links/test
   ```
-  Because the path is a test folder, `irods_db` is filled in as `test`, so the BAMs are staged from the test
-  database.
-- **Config:** copy `config/config.yaml` (or the standard study's config) to `$R/config.yaml`, and set
-  `study_dir` to `$R` and only PD23456 under `donors`.
+  The pipeline builds `$R/samples.tsv` from that folder (section 2). Because it's a test folder, `irods_db` is filled
+  in as `test`, so the BAMs are staged from the test database.
 - **Reference genome:** set `reference.genome` to the FASTA the BAMs were mapped to. If the modified reference has
   the same contigs and coordinates (e.g. a region replaced with Ns), the other reference files can stay as they are.
 - **In silico normal:** if there's no normal mapped to the modified reference, keep the standard one. In the

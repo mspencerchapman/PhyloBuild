@@ -42,16 +42,14 @@ python3 -m venv ~/phylobuild-venv
 ~/phylobuild-venv/bin/pip install snakemake snakemake-executor-plugin-cluster-generic
 R CMD INSTALL phylobuild          # the R package (its dependencies are already on the farm's R 4.4)
 
-# 2. A study directory, with the sample sheet in it: one call per donor (add --no-header after the first)
+# 2. A study directory, with a copy of the config template in it. Edit the copy: study_dir, and the donors with
+#    their CanApps projects (projects: [1234]), ages, sex and settings
 S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
 mkdir -p $S
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD12345 --projects 1234 > $S/samples.tsv
-python3 workflow/scripts/sanger_sample_sheet.py --donor PD23456 --projects 1234 --no-header >> $S/samples.tsv
-
-# 3. Copy the config template into it and edit the copy: study_dir, donors, ages, sex, settings
 cp config/config.yaml $S/config.yaml
 
-# 4. Check what will run, then run it (from the PhyloBuild folder, as a basement-queue job; see GUIDE.md)
+# 3. Check what will run (this also builds $S/samples.tsv from nst_links; check it), then run it
+#    (from the PhyloBuild folder, as a basement-queue job; see GUIDE.md)
 ~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml -n
 ~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml
 ```
@@ -68,6 +66,9 @@ each setting. The main ones:
 - **`study_dir`**: the study directory (it must exist). Each donor's results go to `<study_dir>/<donor>/`; the
   sample sheet (`samples.tsv`), staged BAMs (`staged_bams/`) and LSF logs (`logs/lsf/`) default to it too.
 - **`donors`**: one entry per donor (or transplant pair); anything set here overrides `defaults`.
+- **`projects`**, **`pd_ids`**, **`include_samples`**: where each donor's samples are in nst_links, used to build the
+  sample sheet when there isn't one. **`exclude_samples`** / **`exclude_pattern`** leave samples out, by name or by
+  regular expression (e.g. `"_lo[0-9]+$"`).
 - **`sex`**: `male`, `female`, or `unknown` to use the sex inferred from the data. The pipeline checks the
   configured sex against the data and stops if they disagree (`sex_check: warn` to carry on instead).
 - **`upfront_colony_filter`**: e.g. `[none, 0.4]`. Each value gives its own set of trees: `none` builds from all
@@ -76,7 +77,7 @@ each setting. The main ones:
 - **`cgpvaf_snv_sites`**: `hairpin` (genotype only SNV sites that passed the hairpin filter; same result, fewer
   sites) or `caveman` (the old order: all CaVEMan PASS sites, reduced afterwards).
 - **`bam_staging`**: `sanger` (stage BAMs with `stageBam.pl`; uses the sample sheet's `project` column) or `none`
-  (use the sample sheet's `bam` column as given).
+  (use the sample sheet's `bam` column as given; at Sanger this reads live BAMs straight from nst_links).
 - **`tree.depth_cutoffs`**: `auto` sets the mean-depth window from the data, as median ± `depth_mad_k` (default 4)
   × MAD of the sites' mean depth (separately for X/Y in males), so it follows the donor's coverage and number of
   colonies. For a 47-colony test donor at ~15× this gives 6.8–23.5, close to the old fixed 6–23. The histogram
@@ -84,8 +85,11 @@ each setting. The main ones:
 
 The **sample sheet** (`<study_dir>/samples.tsv`; `config/samples_example.tsv` shows the format) is
 tab-separated with columns `donor, sample, project, bam, caveman_vcf, pindel_vcf`, and optionally `irods_db`
-(`test` for BAMs in a test project, which `stageBam.pl` stages with `-l test`). Outside Sanger, fill it in yourself and set `bam_staging: none`. cgpVAF expects `.bai`
-and `.bas` files next to each BAM.
+(`test` for BAMs in a test project, which `stageBam.pl` stages with `-l test`). cgpVAF expects `.bai` and `.bas`
+files next to each BAM. At Sanger, the pipeline builds it from the donors' `projects` if it doesn't exist. For more
+complex cases, or outside Sanger, make it yourself (by hand or with your own script; with `bam_staging: none`
+outside Sanger): a sheet you make is used as it is, and the build step is skipped. See
+[GUIDE.md](GUIDE.md#2-the-study-directory-and-sample-sheet).
 
 A config given with `--configfile` replaces the template `config/config.yaml` (it isn't merged with it), so each
 study's config is complete on its own.
