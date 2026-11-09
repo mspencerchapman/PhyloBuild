@@ -31,7 +31,7 @@ python3 -m venv ~/phylobuild-venv
 module load R/4.4.0
 mkdir -p ~/R/phylobuild-lib
 export R_LIBS=~/R/phylobuild-lib       # add this line to ~/.bashrc so every job sees the package
-Rscript -e 'remotes::install_github("nangalialab/treemut", lib = Sys.getenv("R_LIBS"))'
+Rscript -e 'remotes::install_github("nangalialab/treemut", lib = "~/R/phylobuild-lib")'   # the R module adds its own paths to R_LIBS, so name the folder
 R CMD INSTALL --library=$R_LIBS phylobuild
 ```
 

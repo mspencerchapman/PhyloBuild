@@ -38,9 +38,15 @@ steps.
 ```bash
 # 1. Get the pipeline and a Python environment with Snakemake (once)
 git clone https://github.com/mspencerchapman/PhyloBuild.git && cd PhyloBuild
+module load python/3.12.3         # Snakemake 9 needs Python >= 3.11; the farm's default python3 is 3.10
 python3 -m venv ~/phylobuild-venv
-~/phylobuild-venv/bin/pip install snakemake snakemake-executor-plugin-cluster-generic
-R CMD INSTALL phylobuild          # the R package (its dependencies are already on the farm's R 4.4)
+~/phylobuild-venv/bin/pip install "snakemake>=9" snakemake-executor-plugin-cluster-generic
+# The R package, into your own R library (its other dependencies are already on the farm's R 4.4)
+module load R/4.4.0
+mkdir -p ~/R/phylobuild-lib
+export R_LIBS=~/R/phylobuild-lib  # add this line to ~/.bashrc so every job sees the package
+Rscript -e 'remotes::install_github("nangalialab/treemut", lib = "~/R/phylobuild-lib")'
+R CMD INSTALL --library=$R_LIBS phylobuild
 
 # 2. A study directory, with a copy of the config template in it. Edit the copy: study_dir, and the donors with
 #    their CanApps projects (projects: [1234]), ages, sex and settings
