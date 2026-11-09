@@ -47,7 +47,7 @@ get_ancestral_nodes = function(node, edge, exclude_root = TRUE) {
 }
 
 #Assign mutations to the branches of the tree described by df (from reconstruct_genotype_summary).
-#Uses treemut's assign_to_df (nangalialab/treemut >= 1.1), the function the old scripts called as
+#Uses treemut's assign_to_df (nangalialab/treemut >= 1.2), the function the old scripts called as
 #assign_to_tree(mtr, dep, df, ...) from a copied treemut.R. On a 47-colony test donor it puts 99.98% of mutations
 #on the same branch as that copy; the 2 that differ were near 50:50 between two branches. treemut's exported
 #assign_to_tree(tree, ...) is not used because it ignores the per-sample error rates, which the pipeline needs

@@ -27,13 +27,16 @@ module load python/3.12.3      # or any Python >= 3.11 (`module avail python` li
 python3 -m venv ~/phylobuild-venv
 ~/phylobuild-venv/bin/pip install "snakemake>=9" snakemake-executor-plugin-cluster-generic
 
-# 3. The R package, into your own R library
+# 3. The R package, into your personal R library (~/R/x86_64-pc-linux-gnu-library/4.4 for R 4.4), which R and
+#    every farm job use automatically. The first line makes that folder if you've never installed a package.
 module load R/4.4.0
-mkdir -p ~/R/phylobuild-lib
-export R_LIBS=~/R/phylobuild-lib       # add this line to ~/.bashrc so every job sees the package
-Rscript -e 'remotes::install_github("nangalialab/treemut", lib = "~/R/phylobuild-lib")'   # the R module adds its own paths to R_LIBS, so name the folder
-R CMD INSTALL --library=$R_LIBS phylobuild
+Rscript -e 'dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)'
+Rscript -e 'if (!requireNamespace("treemut", quietly = TRUE) || packageVersion("treemut") < "1.2") remotes::install_github("nangalialab/treemut")'
+R CMD INSTALL phylobuild
 ```
+
+The other packages it needs are already in the team library on the farm. treemut is installed only if you don't
+already have version 1.2 or later (the version the pipeline was validated with).
 
 Instead of cloning first, you can install just the R package straight from GitHub (useful if you only want the
 functions in your own R sessions):
@@ -45,7 +48,7 @@ remotes::install_github("mspencerchapman/PhyloBuild", subdir = "phylobuild")
 To check the installation:
 
 ```bash
-Rscript -e 'library(phylobuild); packageVersion("treemut")'   # treemut should be 1.1 or later
+Rscript -e 'library(phylobuild); packageVersion("treemut")'   # treemut should be 1.2 or later
 ~/phylobuild-venv/bin/snakemake --version
 ```
 
@@ -62,7 +65,8 @@ profile for your cluster: `profiles/sanger-lsf/` is the one to copy (it's writte
 ```bash
 cd PhyloBuild
 git pull
-R CMD INSTALL --library=$R_LIBS phylobuild    # only needed if anything in phylobuild/ changed
+module load R/4.4.0
+R CMD INSTALL phylobuild    # only needed if anything in phylobuild/ changed
 ```
 
 Snakemake notices when a step's code or settings have changed. A dry run (section 4) shows what would rerun.
@@ -255,7 +259,6 @@ results still go to the study directory.
 
 ```bash
 cd PhyloBuild
-export R_LIBS=~/R/phylobuild-lib                    # if it isn't in ~/.bashrc
 S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
 
 # What would run? (a dry run: lists the jobs, runs nothing)
@@ -282,7 +285,6 @@ cat > run_phylobuild.sh <<'EOF'
 set -euo pipefail
 S=/lustre/scratch125/casm/teams/team273/users/$USER/my_study
 cd /lustre/scratch125/casm/teams/team273/users/$USER/PhyloBuild
-export R_LIBS=~/R/phylobuild-lib
 ~/phylobuild-venv/bin/snakemake --profile profiles/sanger-lsf --configfile $S/config.yaml
 EOF
 chmod +x run_phylobuild.sh
