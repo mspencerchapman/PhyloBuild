@@ -28,7 +28,9 @@ rule cgpvaf_stage:
             dest = os.path.join(stage, dest)
             if os.path.lexists(dest):
                 os.remove(dest)
-            os.symlink(os.path.abspath(src), dest)
+            #Link to the real file, not through other links: the cgpVAF container only mounts /nfs and /lustre, so
+            #a link via /software/SGP/nst_links (BAMs used in place) would be broken inside it
+            os.symlink(os.path.realpath(src), dest)
         entries = list(zip(samples_of(wildcards.donor), input.bams))
         entries.append((NORMAL, input.normal))
         for name, bam in entries:
