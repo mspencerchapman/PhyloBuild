@@ -110,6 +110,6 @@ rule cgpvaf_merge:
         expected_samples = lambda w: samples_of(w.donor),
     envmodules: *modules("r")
     resources:
-        mem_mb = 16000,
+        mem_mb = lambda w, attempt: mem_for_samples(w.donor, 16000, 60, attempt),
     log: f"{OUT}/{{donor}}/logs/cgpvaf/{{vartype}}_merge.log"
     script: "../scripts/merge_cgpvaf.R"

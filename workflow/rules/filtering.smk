@@ -24,7 +24,7 @@ rule sex_check:
         mode = lambda w: donor_cfg(w.donor)["sex_check"],
     envmodules: *modules("r")
     resources:
-        mem_mb = 16000,
+        mem_mb = lambda w, attempt: mem_for_samples(w.donor, 16000, 60, attempt),  #600 colonies needed ~19 GB
     log: f"{OUT}/{{donor}}/logs/sex_check.log"
     script: "../scripts/sex_check.R"
 
@@ -61,7 +61,7 @@ rule reduce:
         legacy_rdata = lambda w: donor_cfg(w.donor)["legacy_rdata"],
     envmodules: *modules("r")
     resources:
-        mem_mb = lambda w, attempt: 16000 * attempt,
+        mem_mb = lambda w, attempt: mem_for_samples(w.donor, 16000, 60, attempt),
     log: f"{OUT}/{{donor}}/logs/reduce_{{cf}}.log"
     script: "../scripts/reduce.R"
 
@@ -77,7 +77,7 @@ rule depth_cutoffs:
         k = lambda w: donor_cfg(w.donor)["tree"]["depth_mad_k"],
     envmodules: *modules("r")
     resources:
-        mem_mb = 8000,
+        mem_mb = lambda w, attempt: mem_for_samples(w.donor, 8000, 30, attempt),
     log: f"{OUT}/{{donor}}/logs/depth_cutoffs.log"
     script: "../scripts/depth_cutoffs.R"
 
@@ -94,6 +94,6 @@ rule sensitivity:
         depth_cutoff = lambda w: donor_cfg(w.donor)["sensitivity_min_total_depth"],
     envmodules: *modules("r")
     resources:
-        mem_mb = 16000,
+        mem_mb = lambda w, attempt: mem_for_samples(w.donor, 16000, 60, attempt),
     log: f"{OUT}/{{donor}}/logs/sensitivity.log"
     script: "../scripts/sensitivity.R"
