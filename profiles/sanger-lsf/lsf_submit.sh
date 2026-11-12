@@ -4,6 +4,10 @@
 set -euo pipefail
 queue=$1; group=$2; mem=$3; runtime=$4; threads=$5; rule=$6; jobscript=$7
 mem=${mem%.*}   # whole MB
+# A retry asking for more time than its queue allows moves up a queue (normal 12 h, long 48 h, basement 30 days)
+runtime=${runtime%.*}
+if [ "$queue" = normal ] && [ "$runtime" -gt 720 ]; then queue=long; fi
+if [ "$queue" = long ] && [ "$runtime" -gt 2880 ]; then queue=basement; fi
 # Make the farm's `module` command available to every shell in the job (needed for the modules in the config)
 export BASH_ENV="$(cd "$(dirname "$0")" && pwd)/modules_init.sh"
 # LSF logs go to <study_dir>/logs/lsf (set by the Snakefile)

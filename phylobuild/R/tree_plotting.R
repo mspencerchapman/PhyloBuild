@@ -135,8 +135,9 @@ plot_tree=function(tree,direction="down",cex.label=5,offset=0,plot_axis=T,title=
   tree$direction=direction
   tree$top=top
   #scale =10
-  scales=c(0,0.5,2,5,10,100,200,500,1000,2000,5000)
-  scale=scales[max(which(ymax/4>scales))]
+  #(the small steps are for trees scaled to a small age, e.g. foetuses run with age 1)
+  scales=c(0.01,0.02,0.05,0.1,0.2,0.5,2,5,10,100,200,500,1000,2000,5000)
+  scale=scales[max(c(1,which(ymax/4>scales)))]
   #scale=scales[max(which(ymax/2>=scales))]
   #browser()
   cat("scale=",scale,"\n")

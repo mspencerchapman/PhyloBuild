@@ -20,6 +20,8 @@ split_vagrent_output = function(vd, col_IDs = c("Gene", "Transcript", "RNA", "CD
 #Returns a function(mat) that annotates mutations with VAGrENT, for use as build_tree(annotate = ...).
 #  work_prefix: path prefix for the VCF files written along the way
 vagrent_annotator = function(work_prefix, cache, species = "Human", assembly = "GRCh38_full_analysis_set_plus_decoy_hla", command = "AnnotateVcf.pl") {
+  #VAGrENT runs in a container that mounts /lustre but not /nfs: give it the cache's real path, not a symlink
+  cache = normalizePath(cache, mustWork = FALSE)
   function(mat) {
     vcf_in = paste0(work_prefix, "_header.vcf")
     vcf_out = paste0(vcf_in, ".annot")
