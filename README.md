@@ -46,6 +46,8 @@ module load R/4.4.0
 Rscript -e 'dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)'
 Rscript -e 'if (!requireNamespace("treemut", quietly = TRUE) || packageVersion("treemut") < "1.2") remotes::install_github("nangalialab/treemut")'
 R CMD INSTALL phylobuild
+# (each run starts by checking that the jobs' R, as set by `modules: r` in the config, can load these; if it
+# can't, it stops and says what to install)
 
 # 2. A study directory, with a copy of the config template in it. Edit the copy: study_dir, and the donors with
 #    their CanApps projects (projects: [1234]), ages, sex and settings

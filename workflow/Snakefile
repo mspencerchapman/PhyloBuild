@@ -21,7 +21,11 @@ import csv
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
+
+from snakemake.exceptions import WorkflowError
 
 # config/config.yaml unless another config is given with --configfile (which then replaces it rather than being
 # merged into it, so a second project's config doesn't pick up this one's donors)
@@ -186,6 +190,51 @@ wildcard_constraints:
 
 def modules(kind):
     return config.get("modules", {}).get(kind, [])
+
+
+# ---- Start-up check: can the R jobs load the R packages? ----
+# Checked as the jobs run R (with the config's R modules, `Rscript --vanilla`), so a missing or misplaced install
+# stops the run in seconds instead of at the first R step, after hours of cgpVAF. Not run for dry runs.
+
+R_CHECK = (
+    'p = c("phylobuild", "treemut"); '
+    'miss = p[!vapply(p, requireNamespace, logical(1), quietly = TRUE)]; '
+    'if (!"treemut" %in% miss && packageVersion("treemut") < "1.2") miss = c(miss, "treemut >= 1.2"); '
+    'if (length(miss)) { cat("Missing: ", paste(miss, collapse = ", "), "\\nR looked in:\\n  ", paste(.libPaths(), collapse = "\\n  "), "\\n", sep = ""); quit(status = 1) }'
+)
+
+def check_r_packages():
+    try:
+        from snakemake.settings.types import DeploymentMethod
+        use_modules = DeploymentMethod.ENV_MODULES in workflow.deployment_settings.deployment_method
+    except Exception:
+        use_modules = False
+    env = dict(os.environ)
+    prefix = ""
+    if use_modules and modules("r"):
+        #outside a login shell the farm's `module` command comes from the profile's modules_init.sh, as in the jobs
+        init = os.path.join(workflow.basedir, "..", "profiles", "sanger-lsf", "modules_init.sh")
+        if subprocess.run(["bash", "-c", "type module"], capture_output=True).returncode != 0 and os.path.exists(init):
+            env["BASH_ENV"] = os.path.abspath(init)
+        prefix = "module purge && MODULES_VERBOSITY=concise module load " + " ".join(modules("r")) + "; "
+    cmd = prefix + "Rscript --vanilla -e " + shlex.quote(R_CHECK)
+    try:
+        res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, env=env, timeout=300)
+    except subprocess.TimeoutExpired:
+        print("Note: the R package check timed out; carrying on", file=sys.stderr)
+        return
+    if res.returncode != 0:
+        raise WorkflowError(
+            "The R jobs can't load the PhyloBuild R packages:\n" + (res.stdout + res.stderr).strip() + "\n"
+            "Install them into your default personal R library, with the same R the jobs use (see the README):\n"
+            "  module load " + (" ".join(modules("r")) or "R") + "\n"
+            "  Rscript -e 'dir.create(Sys.getenv(\"R_LIBS_USER\"), recursive = TRUE, showWarnings = FALSE)'\n"
+            "  Rscript -e 'if (!requireNamespace(\"treemut\", quietly = TRUE) || packageVersion(\"treemut\") < \"1.2\") remotes::install_github(\"nangalialab/treemut\")'\n"
+            "  R CMD INSTALL phylobuild   # from the PhyloBuild folder\n"
+            "A library set with R_LIBS in .bashrc or in ~/.Renviron isn't seen by the jobs.")
+
+onstart:
+    check_r_packages()
 
 
 # ---- Final targets ----
